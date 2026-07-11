@@ -37,12 +37,20 @@ jobs:
         env:
           TRIGGER: ${{ github.event_name }}
           MANUAL_INPUT: ${{ github.event.inputs.target_commit }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [ "$TRIGGER" = "schedule" ]; then
             # Auto mode: resolve latest upstream release tag
-            LATEST_TAG=$(curl -s https://api.github.com/repos/shuaiplus/NodeWarden/releases/latest | jq -r .tag_name)
-            if [ "$LATEST_TAG" = "null" ] || [ -z "$LATEST_TAG" ]; then
-              echo "No release found in upstream."
+            if ! LATEST_RELEASE=$(curl --fail --silent --show-error \
+              --retry 3 --retry-delay 2 --retry-all-errors \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              https://api.github.com/repos/shuaiplus/NodeWarden/releases/latest); then
+              echo "Failed to retrieve the latest upstream release."
+              exit 1
+            fi
+            if ! LATEST_TAG=$(jq -er '.tag_name' <<<"$LATEST_RELEASE"); then
+              echo "Latest upstream release response does not contain a tag name."
               exit 1
             fi
             TARGET_SHA=$(git rev-list -n 1 "$LATEST_TAG" 2>/dev/null)
